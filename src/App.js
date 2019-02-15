@@ -17,6 +17,7 @@ class App extends Component {
     this.state = startState();
     this.restart = this.restart.bind(this);
     this.handleClick = this.handleClick.bind(this);
+    this.aiMove = this.aiMove.bind(this);
   }
 
   restart() {
@@ -52,8 +53,11 @@ class App extends Component {
     }
   }
 
-  bestMove() {
-    return nextMove(this.state);
+  aiMove() {
+    const move = nextMove(this.state);
+    if (move) {
+      this.handleClick(...move);
+    }
   }
 
   render() {
@@ -65,7 +69,7 @@ class App extends Component {
         </div>
         <div className="controls">
           <button onClick={this.restart}>Restart</button>{' '}
-          <button onClick={() => this.handleClick(...this.bestMove())}>AI</button>
+          <button onClick={this.aiMove}>AI Move</button>
           {/* <button>Undo</button> */}
         </div>
       </div>
