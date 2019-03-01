@@ -3,7 +3,7 @@ import SubBoard from './SubBoard';
 
 function Board({ board, onClick }) {
   return (
-    <table style={{ background: 'black' }}>
+    <table style={{ background: 'black', borderRadius: 6 }}>
       <tbody>
         <tr>
           <td><SubBoard value={board[0]} onClick={j => onClick(0, j)} /></td>
