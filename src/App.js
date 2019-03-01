@@ -36,7 +36,8 @@ class App extends Component {
   }
 
   undo() {
-    this.setState({ history: this.state.history.slice(0, -1) });
+    if (this.state.history.length > 1)
+      this.setState({ history: this.state.history.slice(0, -1) });
   }
 
   handleClick(i, j) {
