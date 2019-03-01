@@ -66,7 +66,7 @@ function nextMove(state) {
       const h = hash(ch);
       if (!n[h])
         return null;
-      const score = w[h] / n[h] + Math.SQRT2 * Math.sqrt(Math.log(N) / n[h]);
+      const score = w[h] / n[h] + 10 * Math.sqrt(Math.log(N) / n[h]);
       if (score > best) {
         ret = ch;
         best = score;
