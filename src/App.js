@@ -1,42 +1,38 @@
 import React, { Component } from 'react';
+import { List } from 'immutable';
 import './App.css';
 import Board from './Board';
-import { copyArray, findWinner, findGlobalWinner } from './utils';
-import nextMove from './ai';
-
-function startState() {
-  const board = [];
-  for (let i = 0; i < 9; i++)
-    board.push(new Array(9).fill(-1));
-  return { board, turn: 0, current: -1 };
-}
+import { startState, findWinner, findGlobalWinner } from './utils';
+import MonteCarloBot from './ai';
 
 class App extends Component {
   constructor(props) {
     super(props);
-    this.state = { history: [startState()] };
+    this.state = { history: new List([startState()]) };
     this.restart = this.restart.bind(this);
     this.handleClick = this.handleClick.bind(this);
     this.aiMove = this.aiMove.bind(this);
     this.undo = this.undo.bind(this);
+    this.ai = new MonteCarloBot(1000);
   }
 
   get gameState() {
-    return this.state.history[this.state.history.length - 1];
+    return this.state.history.last();
   }
 
   set gameState(next) {
     this.setState({
-      history: this.state.history.concat([next])
+      history: this.state.history.push(next)
     });
   }
 
   restart() {
-    this.setState({ history: [startState()] });
+    this.setState({ history: new List([startState()]) });
+    this.ai = new MonteCarloBot(1000);
   }
 
   undo() {
-    if (this.state.history.length > 1)
+    if (this.state.history.size > 1)
       this.setState({ history: this.state.history.slice(0, -1) });
   }
 
@@ -44,10 +40,10 @@ class App extends Component {
     const { gameState } = this;
     if (findGlobalWinner(gameState.board) !== -1)
       return; // game has ended
-    if (gameState.board[i][j] !== -1)
+    if (gameState.board.getIn([i, j]) !== -1)
       return; // cell already occupied
     if (gameState.current !== -1) {
-      const local = gameState.board[gameState.current];
+      const local = gameState.board.get(gameState.current);
       const localWinner = findWinner(local);
       const freeSquares = local.indexOf(-1) !== -1;
       if (localWinner === -1 && freeSquares && i !== gameState.current)
@@ -55,14 +51,13 @@ class App extends Component {
       else if (localWinner !== -1 && i === gameState.current)
         return; // cannot move in won board
     }
-    const board2 = copyArray(gameState.board);
-    board2[i][j] = gameState.turn;
+    const board = gameState.board.setIn([i, j], gameState.turn);
     this.gameState = {
-      board: board2,
+      board,
       turn: 1 - gameState.turn,
       current: j
     };
-    const winner = findGlobalWinner(board2);
+    const winner = findGlobalWinner(board);
     if (winner !== -1) {
       setTimeout(() => {
         alert(`${winner ? 'O' : 'X'} has won!`);
@@ -71,7 +66,7 @@ class App extends Component {
   }
 
   aiMove() {
-    const move = nextMove(this.gameState);
+    const move = this.ai.nextMove(this.gameState);
     if (move) {
       this.handleClick(...move);
     }

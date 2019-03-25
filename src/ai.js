@@ -1,28 +1,21 @@
-import { copyArray, findWinner, findGlobalWinner } from './utils';
+import { hash } from 'immutable';
+import { findWinner, findGlobalWinner } from './utils';
 
-function hash(state) {
-  const mod = 67108859;
-  let h = 0;
-  for (const ar of state.board) {
-    for (const num of ar)
-      h = (h * 11 + num) % mod;
-  }
-  h = (h * 11 + state.turn) % mod;
-  h = (h * 11 + state.current) % mod;
-  return h;
+function stateHash(state) {
+  return hash(state.board) + '|' + state.turn + '|' + state.current;
 }
 
 function moveList(state) {
   const winners = state.board.map(findWinner);
   let current = state.current;
-  if (winners[current] !== -1)
+  if (winners.get(current) !== -1)
     current = -1;
   const moves = [];
   for (let i = 0; i < 9; i++) {
     if (current !== -1 && current !== i)
       continue;
     for (let j = 0; j < 9; j++) {
-      if (winners[i] === -1 && state.board[i][j] === -1)
+      if (winners.get(i) === -1 && state.board.getIn([i, j]) === -1)
         moves.push([i, j]);
     }
   }
@@ -30,19 +23,14 @@ function moveList(state) {
 }
 
 function succ(state, move) {
-  state.board[move[0]][move[1]] = state.turn;
-  state.turn = 1 - state.turn;
-  state.current = move[1];
-}
-
-function succImmutable(state, move) {
-  state = { ...state, board: copyArray(state.board) };
-  succ(state, move);
-  return state;
+  return {
+    board: state.board.setIn(move, state.turn),
+    turn: 1 - state.turn,
+    current: move[1]
+  };
 }
 
 function rollout(state) {
-  state = { ...state, board: copyArray(state.board) };
   while (true) {
     const winner = findGlobalWinner(state.board);
     if (winner !== -1)
@@ -50,23 +38,29 @@ function rollout(state) {
     const moves = moveList(state);
     if (!moves.length)
       return -1;
-    succ(state, moves[Math.floor(Math.random() * moves.length)]);
+    state = succ(state, moves[Math.floor(Math.random() * moves.length)]);
   }
 }
 
-function nextMove(state) {
-  let N = 0;
-  const n = {}, w = {}; // number of simulations & wins for state
+class MonteCarloBot {
+  constructor(iterations) {
+    this.N = 0;
+    this.sims = new Map();
+    this.wins = new Map();
+    this.iterations = iterations;
+  }
 
-  function uctPolicy(node) {
+  _uctPolicy(node) {
     const moves = moveList(node);
     let best = -Infinity, ret = null;
     for (const m of moves) {
-      const ch = succImmutable(node, m);
-      const h = hash(ch);
-      if (!n[h])
+      const ch = succ(node, m);
+      const h = stateHash(ch);
+      const n = this.sims.get(h);
+      if (!n)
         return null;
-      const score = w[h] / n[h] + 10 * Math.sqrt(Math.log(N) / n[h]);
+      const w = this.wins.get(h);
+      const score = w / n + 10 * Math.sqrt(Math.log(this.N) / n);
       if (score > best) {
         ret = ch;
         best = score;
@@ -75,12 +69,12 @@ function nextMove(state) {
     return ret;
   }
 
-  function pickUnvisited(node) {
+  _pickUnvisited(node) {
     const unvis = [];
     const moves = moveList(node);
     for (const m of moves) {
-      const ch = succImmutable(node, m);
-      if (!n[hash(ch)]) {
+      const ch = succ(node, m);
+      if (!this.sims.get(stateHash(ch))) {
         unvis.push(ch);
       }
     }
@@ -89,68 +83,38 @@ function nextMove(state) {
     return unvis[Math.floor(Math.random() * unvis.length)];
   }
 
-  const ITERS = 4200;
-  for (let it = 0; it < ITERS; it++) {
-    ++N;
-    const history = [state];
-    let leaf = state;
-    while (true) {
-      const nxt = uctPolicy(leaf);
-      if (!nxt)
-        break;
-      leaf = nxt;
+  nextMove(state) {
+    for (let it = 0; it < this.iterations; it++) {
+      ++this.N;
+      const history = [state];
+      let leaf = state;
+      while (true) {
+        const nxt = this._uctPolicy(leaf);
+        if (!nxt)
+          break;
+        leaf = nxt;
+        history.push(leaf);
+      }
+      leaf = this._pickUnvisited(leaf);
       history.push(leaf);
-    }
-    leaf = pickUnvisited(leaf);
-    history.push(leaf);
 
-    const result = rollout(leaf);
-    for (const node of history) {
-      const h = hash(node);
-      n[h] = (n[h] || 0) + 1;
-      w[h] = (w[h] || 0) + (result === -1 ? 0.5 : result === node.turn ? 0 : 1);
+      const result = rollout(leaf);
+      for (const node of history) {
+        const h = stateHash(node);
+        this.sims.set(h, (this.sims.get(h) || 0) + 1);
+        this.wins.set(h, (this.wins.get(h) || 0) + (result === -1 ? 0.5 : result === node.turn ? 0 : 1));
+      }
     }
-  }
 
-  const moves = moveList(state);
-  let ret = null, best = -1;
-  for (const m of moves) {
-    const num = n[hash(succImmutable(state, m))];
-    if (num > best) {
-      best = num;
-      ret = m;
+    const moves = moveList(state);
+    let ret = null, max = -1;
+    for (const m of moves) {
+      const num = this.sims.get(stateHash(succ(state, m)));
+      if (num > max)
+        [ret, max] = [m, num];
     }
+    return ret;
   }
-  return ret;
 }
 
-// function nextMove(state) {
-//   const ITERS = 500;
-//   const moves = moveList(state);
-//   let next = null, best = -Infinity;
-//   for (const m of moves) {
-//     let fitness = 0;
-//     for (let it = 0; it < ITERS; it++) {
-//       const s = {
-//         ...state,
-//         board: copyArray(state.board)
-//       };
-//       succ(s, m);
-//       const winner = markov(s);
-//       if (winner !== -1) {
-//         if (winner === state.turn)
-//           ++fitness;
-//         else
-//           --fitness;
-//       }
-//     }
-//     fitness /= ITERS;
-//     if (fitness > best) {
-//       next = m;
-//       best = fitness;
-//     }
-//   }
-//   return next;
-// }
-
-export default nextMove;
+export default MonteCarloBot;
